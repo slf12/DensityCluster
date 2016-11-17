@@ -152,7 +152,7 @@ class DensityCluster( object ):
 		return distance, max_dis, min_dis, max_id, rho
 
 
-	def cluster(self, distance_file,  load_data_func, density_threshold, distance_threshold, dc = None, auto_select_dc = False):
+	def cluster(self, distance_file,  load_data_func, dc = None, auto_select_dc = False):
 		'''
 		cluster 
 		arguments:
