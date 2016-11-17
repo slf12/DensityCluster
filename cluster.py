@@ -9,8 +9,10 @@ logger = logging.getLogger('Density Cluster')
 def load_data(dis_file):
 	'''
 	load data from distance file
-	arguments: dis_file : file name, the format is 1-column index1, 2-column index 2, 3-column distance
-	return: distance dict, max distance, min distance, max index
+	arguments: 
+		dis_file : file name, the format is 1-column index1, 2-column index 2, 3-column distance
+	return: 
+		distance dict, max distance, min distance, max index
 	'''
 	logger.info('progress: load data start')
 	distance = {}
@@ -32,7 +34,7 @@ def load_data(dis_file):
 	logger.info('progress: load data end')
 	return distance, max_dis, min_dis, max_id
 
-def select_dc(distance, max_id, max_dis, min_dis, auto_select_dc = False):
+def select_dc(distance, max_id, max_dis, min_dis, auto_select_dc):
 	'''
 	select local density threshold, default is used in the paper, is 2.0, if you do not want use this, you can set auto_select_dc = True
 	arguments: 
@@ -70,7 +72,7 @@ def auto_select_dc_fuc(distance, max_id, max_dis, min_dis):
 			break
 	return dc
 
-def compute_local_density(distance, max_id, dc, guass = True, cutoff = False):
+def compute_local_density(distance, max_id, dc, guass):
 	'''
 	compute local density
 	arguments:
@@ -108,7 +110,7 @@ def min_distance_for_higher_point(distance, rho, max_id, max_dis):
 		min_distance vector, nearest neighbor vector
 	'''
 	logger.info("progess: compute min distance to nearest higher density neighbor")
-	rho_sort_index = np.argsort(rho)
+	rho_sort_index = np.argsort(-rho)
 	delta = [0.0] + [float(max_dis)] * (len(rho) - 1)
 	nearest_neighbor = [0] * len(rho)
 	delta[rho_sort_index[0]] = -1
@@ -116,20 +118,102 @@ def min_distance_for_higher_point(distance, rho, max_id, max_dis):
 		for j in xrange(0, i):
 			original_i = rho_sort_index[i]
 			original_j = rho_sort_index[j]
-			 if distance[(original_i, original_j)]  < delta[original_i]:
+			if distance[(original_i, original_j)] < delta[original_i]:
 			 	delta[original_i] = distance[(original_i, original_j)]
 			 	nearest_neighbor[original_i] = original_j
 
 		if i % (max_id / 10) == 0:
 			logger.info('progress: at index ' + str(i))
-	delta[sort_rho_idx[0]] = max(delta)
-	return np.array(delta, np.float32), np.array(nneigh, np.float32)
+	delta[rho_sort_index[0]] = max(delta)
+	return np.array(delta, np.float32), np.array(nearest_neighbor, np.float32)
 
-def  cluster(delta, rho, nearest_neighbor, density_threshold, distance_threshold):
-	pass
+def  choose_cluster_center(delta, rho, nearest_neighbor, rho_threshold, delta_threshold):
+	'''
+	get cluster, ccenter
+	arguments:
+		delta: distance
+		rho: local density
+		nearest_neighbor: index that has higher density and min distance
+		rho_threshold: local density threshold 
+		delta_threshold: distance threshold
+	returns:
+		cluster center id
+	'''
+	logger.info('progress: choose cluster center start')
+	cluster = [0] * len(rho)
+	ccenter = [-1]
+	flag = 0
+	for index, (density_temp, distance_temp, neighbor) in enumerate(zip(rho, delta, nearest_neighbor)):
+		if index == 0:
+			continue
+		if density_temp >= rho_threshold and distance_temp >= delta_threshold:
+			flag = flag + 1
+			ccenter.append(index)
+			cluster[index] = flag
+	for value in ccenter:
+		if value == -1:
+			continue
+		logger.info('id of cluster center ' + str(value))
+	logger.info('progress: choose cluster center end')
+	return cluster, ccenter
+
+def do_cluster(cluster, ccenter, delta, rho, nearest_neighbor):
+	'''
+	progress the points that is not center
+	arguments:
+		cluster: cluster
+		ccenter: index of center
+		delta: min distance
+		rho: local density
+		nearest_neighbor: index that point's nearest neighbor
+	'''
+	logger.info('progress: cluster start')
+	rho_sort_index = np.argsort(-rho)
+	for index in rho_sort_index:
+		if index == 0 or index in ccenter:
+			continue
+		cluster[index] = cluster[int(nearest_neighbor[index])]
+	for value in ccenter:
+		if value == -1:
+			continue
+		cluster[value] = -1
+
+	logger.info('progress: cluster end')
+	return cluster, ccenter
+
+def halo(cluster, ccenter, distance, dc, max_id, rho):
+	'''
+	compute halo, 0 is center, 1 is halo
+	arguments:
+		cluster: cluster
+		ccenter: index of center
+		distance: distance dict
+		max_id: max index
+		dc: local density threshold
+	return:
+		halo vector
+	'''
+	if len(ccenter) < 2:
+		halo = [0] * (max_id + 1)
+		return halo
+	halo = [1] * (max_id + 1)
+	bord_rho = [0.0] * len(ccenter)
+	for i in xrange(1, max_id):
+		for j in xrange(1 + i, max_id + 1):
+			if (cluster[i] != cluster[j]) and (distance[(i, j)] <= dc):
+				rho_aver = (rho[i] + rho[j]) / 2.0
+				if rho_aver > bord_rho[cluster[i]]:
+					bord_rho[cluster[i]] = rho_aver
+				if rho_aver > bord_rho[cluster[j]]:
+					bord_rho[cluster[j]] = rho_aver
+	print bord_rho
+	for i in xrange(1, max_id + 1):
+		if rho[i] < bord_rho[cluster[i]]:
+			halo[i] = 0
+	return halo
 
 class DensityCluster( object ):
-	def get_local_density(self, load_data_func, distance_file, dc = None, auto_select_dc = False):
+	def get_local_density(self, load_data_func, distance_file, auto_select_dc, guass):
 		'''
 		use function defined before together to get the local density
 		Arguments:
@@ -145,14 +229,13 @@ class DensityCluster( object ):
 			rho: loacl density
 		'''
 		distance, max_dis, min_dis, max_id = load_data_func(distance_file)
-		if dc == None:
-			dc = select_dc(distance, max_id, max_dis, min_dis, auto_select_dc)
-		rho = compute_local_density(distance, max_id, dc)
+		dc = select_dc(distance, max_id, max_dis, min_dis, auto_select_dc)
+		rho = compute_local_density(distance, max_id, dc, guass)
 
-		return distance, max_dis, min_dis, max_id, rho
+		return distance, max_dis, min_dis, max_id, rho, dc
 
 
-	def cluster(self, distance_file,  load_data_func, dc = None, auto_select_dc = False):
+	def cluster(self, distance_file,  load_data_func, auto_select_dc, guass):
 		'''
 		cluster 
 		arguments:
@@ -165,7 +248,18 @@ class DensityCluster( object ):
 		returns:
 
 		'''
-		distance, max_dis, min_dis, max_id, rho = self.get_local_density(load_data_func, distance_file, dc =dc, auto_select_dc = auto_select_dc)
+		distance, max_dis, min_dis, max_id, rho, dc = self.get_local_density(load_data_func, distance_file, auto_select_dc, guass)
 		delta, nearest_neighbor = min_distance_for_higher_point(distance, rho, max_id, max_dis)
-		plot_rho_delta(rho, delta)
+		rho_threshold, delta_threshold = plot_rho_delta(rho, delta)
+		if rho_threshold == -1:
+			rho_threshold = 20
+			delta_threshold = 0.1
+		cluster, ccenter = choose_cluster_center(delta, rho, nearest_neighbor, rho_threshold, delta_threshold)
+		cluster, ccenter = do_cluster(cluster, ccenter, delta, rho, nearest_neighbor)
+		halo_v = halo(cluster, ccenter, distance, dc, max_id, rho)
+		self.cluster = cluster
+		self.ccenter = ccenter
+		self.max_id = max_id
+		self.distance = distance
+		self.halo = halo_v
 
