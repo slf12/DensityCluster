@@ -2,6 +2,7 @@ import logging
 import sys
 import math
 import numpy as np
+from plot import *
 logger = logging.getLogger('Density Cluster')
 
 
@@ -124,6 +125,8 @@ def min_distance_for_higher_point(distance, rho, max_id, max_dis):
 	delta[sort_rho_idx[0]] = max(delta)
 	return np.array(delta, np.float32), np.array(nneigh, np.float32)
 
+def  cluster(delta, rho, nearest_neighbor, density_threshold, distance_threshold):
+	pass
 
 class DensityCluster( object ):
 	def get_local_density(self, load_data_func, distance_file, dc = None, auto_select_dc = False):
@@ -149,5 +152,20 @@ class DensityCluster( object ):
 		return distance, max_dis, min_dis, max_id, rho
 
 
-	def cluster():
-		
+	def cluster(self, distance_file,  load_data_func, density_threshold, distance_threshold, dc = None, auto_select_dc = False):
+		'''
+		cluster 
+		arguments:
+			distance_file: distance file
+			load_data_func: load data function 
+			density_threshold: density threshold that  use when choose cluster center
+			distance_threshold: distance threshold that use when choose cluster center
+			dc : local density threshold
+			auto_select_dc : auto select dc or not
+		returns:
+
+		'''
+		distance, max_dis, min_dis, max_id, rho = self.get_local_density(load_data_func, distance_file, dc =dc, auto_select_dc = auto_select_dc)
+		delta, nearest_neighbor = min_distance_for_higher_point(distance, rho, max_id, max_dis)
+		plot_rho_delta(rho, delta)
+
