@@ -107,4 +107,47 @@ def min_distance_for_higher_point(distance, rho, max_id, max_dis):
 		min_distance vector, nearest neighbor vector
 	'''
 	logger.info("progess: compute min distance to nearest higher density neighbor")
+	rho_sort_index = np.argsort(rho)
+	delta = [0.0] + [float(max_dis)] * (len(rho) - 1)
+	nearest_neighbor = [0] * len(rho)
+	delta[rho_sort_index[0]] = -1
+	for i in xrange(1, max_id):
+		for j in xrange(0, i):
+			original_i = rho_sort_index[i]
+			original_j = rho_sort_index[j]
+			 if distance[(original_i, original_j)]  < delta[original_i]:
+			 	delta[original_i] = distance[(original_i, original_j)]
+			 	nearest_neighbor[original_i] = original_j
 
+		if i % (max_id / 10) == 0:
+			logger.info('progress: at index ' + str(i))
+	delta[sort_rho_idx[0]] = max(delta)
+	return np.array(delta, np.float32), np.array(nneigh, np.float32)
+
+
+class DensityCluster( object ):
+	def get_local_density(self, load_data_func, distance_file, dc = None, auto_select_dc = False):
+		'''
+		use function defined before together to get the local density
+		Arguments:
+			load_data_func: the function that load the data from file, we can define different function to load different distance
+			distance_file: the distance file
+			dc: local density threshold 
+			auto_select_dc: auto select dc or not
+		return: 
+			distance: distance dict
+			max_dis: max distance
+			min_dis: min distance
+			max_id: max index
+			rho: loacl density
+		'''
+		distance, max_dis, min_dis, max_id = load_data_func(distance_file)
+		if dc == None:
+			dc = select_dc(distance, max_id, max_dis, min_dis, auto_select_dc)
+		rho = compute_local_density(distance, max_id, dc)
+
+		return distance, max_dis, min_dis, max_id, rho
+
+
+	def cluster():
+		
